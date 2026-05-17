@@ -1,0 +1,16 @@
+Issue key,Summary,Issue Type,Status,Priority,Assignee,Reporter,Custom field (Story Points),Created,Resolved,Sprint,Labels
+VOY-1201,Migrate driver dispatch service to new container platform,Story,Done,High,Anita Patel,Marcus Webb,8,2026-04-15,2026-04-22,Sprint 23,platform;migration
+VOY-1202,Fix duplicate route assignment race condition,Bug,Done,Highest,Anita Patel,Lena Park,5,2026-04-15,2026-04-19,Sprint 23,bug;production
+VOY-1203,Add Mandarin localisation to driver mobile app,Story,Done,Medium,Wei Chen,Priya Nair,5,2026-04-15,2026-04-25,Sprint 23,i18n;mobile
+VOY-1204,Replace legacy fuel-card OAuth with rotating tokens,Story,In Progress,High,Daniel Okafor,Marcus Webb,8,2026-04-15,,Sprint 23,security;oauth
+VOY-1205,Customer feedback dashboard MVP,Story,Done,Medium,Wei Chen,Sarah Chen,3,2026-04-15,2026-04-28,Sprint 23,dashboard
+VOY-1206,Reduce p95 dispatch API latency under 300ms,Story,In Progress,High,Anita Patel,Daniel Okafor,8,2026-04-15,,Sprint 23,perf
+VOY-1207,Investigate Hong Kong customs API rate-limit errors,Spike,Done,Medium,Daniel Okafor,Lena Park,2,2026-04-15,2026-04-17,Sprint 23,spike;integration
+VOY-1208,Driver app crash on Android 9 launch,Bug,Done,High,Wei Chen,Customer Support,3,2026-04-15,2026-04-20,Sprint 23,bug;mobile;android
+VOY-1209,Add audit log retention policy (90 days),Story,To Do,Medium,Unassigned,Marcus Webb,5,2026-04-15,,Sprint 23,compliance;audit
+VOY-1210,Replace deprecated Mapbox SDK v9,Tech Debt,To Do,Low,Unassigned,Daniel Okafor,,2026-04-15,,Sprint 23,tech-debt;mobile
+VOY-1211,Refactor billing webhook handler for idempotency,Story,Blocked,High,Anita Patel,Rachel Torres,5,2026-04-15,,Sprint 23,billing;blocked
+VOY-1212,Document on-call escalation runbook for ERP outage,Task,Done,Medium,Priya Nair,Sarah Chen,2,2026-04-15,2026-04-18,Sprint 23,docs;ops
+VOY-1213,Sentry alerts triage rotation setup,Task,Done,Low,Priya Nair,Sarah Chen,1,2026-04-15,2026-04-16,Sprint 23,ops
+VOY-1214,Customer support knowledge-base search relevance fix,Story,In Progress,Medium,Wei Chen,Priya Nair,3,2026-04-15,,Sprint 23,support;search
+VOY-1215,Driver onboarding video subtitles (3 languages),Story,To Do,Low,Unassigned,Priya Nair,,2026-04-15,,Sprint 23,content

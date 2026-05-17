@@ -1,0 +1,59 @@
+{
+  "description": "Eval cases for the sprint retrospective narrator. Each case fixes the input data and asserts that the LLM output mentions specific tickets/themes (must_mention) and avoids specific anti-patterns (must_not_mention).",
+  "cases": [
+    {
+      "id": "voyager_blocked_ticket",
+      "data_file": "sample_sprint_jira.csv",
+      "extra_context": null,
+      "must_mention": ["VOY-1211", "blocked", "billing"],
+      "must_not_mention_regex": ["\\$[0-9]", "revenue", "profit"],
+      "rubric": {
+        "executive_summary_present": true,
+        "what_went_well_present": true,
+        "what_did_not_go_well_present": true,
+        "risks_present": true,
+        "recommendations_present": true
+      }
+    },
+    {
+      "id": "voyager_unestimated_warning",
+      "data_file": "sample_sprint_jira.csv",
+      "extra_context": null,
+      "must_mention": ["unestimated", "story-point"],
+      "must_not_mention_regex": ["fired", "blame"],
+      "rubric": {
+        "actionable_recommendation_present": true
+      }
+    },
+    {
+      "id": "coastal_low_completion",
+      "data_file": "sample_sprint_clickup.csv",
+      "extra_context": "Previous sprint completed 28 points.",
+      "must_mention": ["completion", "CB-408"],
+      "must_not_mention_regex": ["100%"],
+      "rubric": {
+        "compares_to_previous_sprint": true
+      }
+    },
+    {
+      "id": "coastal_blocked_2fa",
+      "data_file": "sample_sprint_clickup.csv",
+      "extra_context": null,
+      "must_mention": ["CB-408", "blocked"],
+      "must_not_mention_regex": [],
+      "rubric": {
+        "executive_summary_present": true
+      }
+    },
+    {
+      "id": "voyager_contributor_load",
+      "data_file": "sample_sprint_jira.csv",
+      "extra_context": "Daniel Okafor is leaving the team next sprint.",
+      "must_mention": ["Daniel", "VOY-1204"],
+      "must_not_mention_regex": [],
+      "rubric": {
+        "succession_concern_raised": true
+      }
+    }
+  ]
+}
