@@ -13,6 +13,37 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# ---------- Page config — MUST be the first Streamlit call ----------
+st.set_page_config(
+    page_title="Sprint Analyzer",
+    page_icon="📊",
+    layout="wide",
+)
+
+# ---------- Env loading (runs after page config so st.secrets is allowed) ----------
+# Locally: reads .env from project root via python-dotenv.
+# On Streamlit Cloud: a secrets.toml is auto-generated from the Secrets editor;
+# we then bridge st.secrets → os.environ so the narrator module
+# (which uses os.environ.get) works unchanged in both environments.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
+
+# Only touch st.secrets if a secrets file is actually present, otherwise
+# Streamlit prints a noisy "No secrets found" warning during local dev.
+_SECRETS_LOCATIONS = [
+    Path(__file__).parent / ".streamlit" / "secrets.toml",
+    Path.home() / ".streamlit" / "secrets.toml",
+]
+if any(p.exists() for p in _SECRETS_LOCATIONS):
+    try:
+        for _k, _v in st.secrets.items():
+            os.environ.setdefault(_k, str(_v))
+    except Exception:
+        pass
+
 from sprint_analyzer import (
     build_report,
     compute_metrics,
@@ -20,17 +51,8 @@ from sprint_analyzer import (
     load_sprint_csv,
 )
 from sprint_analyzer.metrics import sample_tickets_for_narration
-from sprint_analyzer.narrator import NarrationInput
+from sprint_analyzer.narrator import NarrationInput, active_backend_label, _active_provider
 from sprint_analyzer.report import render_metrics_section
-
-
-# ---------- Config ----------
-
-st.set_page_config(
-    page_title="Sprint Analyzer",
-    page_icon="📊",
-    layout="wide",
-)
 
 DATA_DIR = Path(__file__).parent / "data"
 SAMPLE_FILES = {
@@ -83,6 +105,12 @@ else:
         type=["csv"],
         help="Auto-detects Jira and ClickUp formats. Falls back to heuristic column mapping.",
     )
+    st.sidebar.caption(
+        "🔒 Uploaded CSVs are held in memory for the current session only. "
+        "Nothing is persisted to disk by this app. The metrics JSON and a small "
+        "sample of ticket rows are sent to the Anthropic API for narrative generation — "
+        "do not upload data you cannot share with a third-party LLM provider."
+    )
     if uploaded is not None:
         try:
             sprint = _load_from_upload(uploaded)
@@ -90,27 +118,37 @@ else:
             st.sidebar.error(f"Parse failed: {e}")
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("**LLM backend**")
+st.sidebar.code(active_backend_label(), language="text")
 st.sidebar.caption(
-    "[Architecture decisions →](README.md) · "
-    "Set `ANTHROPIC_API_KEY` in `.env` to enable narrative generation."
+    "Switch backends in `.env`: `LLM_PROVIDER=anthropic` for Claude (demo), "
+    "`LLM_PROVIDER=openai` for any OpenAI-compatible endpoint (dev / free tiers)."
 )
+st.sidebar.caption("[Architecture decisions →](README.md)")
 
 
 # ---------- Main: metrics view ----------
 
-st.title("Sprint retrospective generator")
-st.caption(
-    "Pre-computed metrics on the left, LLM-written narrative on the right. "
-    "Every number in the report comes from pandas — never from the LLM."
-)
-
 if sprint is None:
+    st.title("Sprint retrospective generator")
+    st.caption(
+        "Pre-computed metrics on the left, LLM-written narrative on the right. "
+        "Every number in the report comes from pandas — never from the LLM."
+    )
     st.info("Pick a sample dataset or upload a CSV to begin.")
     st.stop()
 
 metrics = compute_metrics(sprint)
 
-# Detected info
+# Sprint-aware title — show the detected sprint name prominently if we have it.
+sprint_label = sprint.sprint_name or "(unnamed sprint)"
+st.title(f"📊 {sprint_label}")
+st.caption(
+    f"**{sprint.total_tickets}** tickets · **{sprint.source_format}** format · "
+    "every number computed by pandas; only the prose comes from the LLM."
+)
+
+# Detected info — collapsed by default; useful for debugging unusual exports.
 with st.expander("Detected sprint info", expanded=False):
     cols = st.columns(3)
     cols[0].metric("Source format", sprint.source_format)
@@ -125,6 +163,19 @@ col1.metric("Tickets", metrics.total_tickets)
 col2.metric("Completed", metrics.completed_tickets, f"{int(metrics.completion_rate * 100)}%")
 col3.metric("Points done / committed", f"{metrics.completed_points:g} / {metrics.committed_points:g}")
 col4.metric("Blocked", metrics.blocked_tickets, delta_color="inverse")
+
+# Cycle time row — explicit when we don't have enough date data
+cyc1, cyc2 = st.columns(2)
+if metrics.avg_cycle_time_days is None:
+    cyc1.metric("Avg cycle time", "n/a")
+    cyc2.metric("Median cycle time", "n/a")
+    st.caption(
+        "ℹ️ Cycle time is shown as `n/a` because no completed tickets had both "
+        "**created** and **resolved** dates. Add those columns in your export to enable it."
+    )
+else:
+    cyc1.metric("Avg cycle time", f"{metrics.avg_cycle_time_days:.1f} d")
+    cyc2.metric("Median cycle time", f"{metrics.median_cycle_time_days:.1f} d")
 
 # Status breakdown chart
 status_df = pd.DataFrame(
@@ -167,11 +218,14 @@ extra_ctx = st.text_area(
     placeholder="Previous sprint completed 32 points. One team member was on leave.",
 )
 
-has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+required_key = "OPENAI_API_KEY" if _active_provider() == "openai" else "ANTHROPIC_API_KEY"
+has_key = bool(os.environ.get(required_key))
 if not has_key:
     st.warning(
-        "`ANTHROPIC_API_KEY` is not set. The numerical report will still render below, "
-        "but the LLM narrative will be skipped. Set it in `.env` to enable."
+        f"`{required_key}` is not set for the active backend "
+        f"(`LLM_PROVIDER={_active_provider()}`). "
+        "The numerical report will still render below, but the narrative will be skipped. "
+        "Set the key in `.env` to enable."
     )
 
 generate_clicked = st.button("✍️ Generate narrative", type="primary", disabled=not has_key)
@@ -183,7 +237,7 @@ if generate_clicked:
         sample_tickets=samples,
         extra_context=extra_ctx.strip() or None,
     )
-    with st.spinner("Asking Claude to write the narrative…"):
+    with st.spinner("Asking AI to write the narrative…"):
         try:
             narrative = generate_retrospective(payload)
             st.session_state["narrative_md"] = narrative

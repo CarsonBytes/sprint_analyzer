@@ -24,7 +24,7 @@ def render_metrics_section(m: SprintMetrics) -> str:
 
     lines: list[str] = []
     lines.append(f"# Sprint retrospective — {title}")
-    lines.append(f"*Generated {dt.datetime.utcnow():%Y-%m-%d %H:%M UTC} by Sprint Analyzer.*")
+    lines.append(f"*Generated {dt.datetime.now(dt.timezone.utc):%Y-%m-%d %H:%M UTC} by Sprint Analyzer.*")
     lines.append("")
 
     # Top-line metrics

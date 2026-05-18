@@ -7,7 +7,14 @@ the live LLM, and scores the output against the rubric.
 Usage:
     python -m eval.run_eval [--limit N]
 
-Requires ANTHROPIC_API_KEY in env. Outputs a Markdown summary to eval/results.md.
+The active backend is selected by LLM_PROVIDER in .env:
+  - LLM_PROVIDER=anthropic  → requires ANTHROPIC_API_KEY
+  - LLM_PROVIDER=openai     → requires OPENAI_API_KEY (also OPENAI_BASE_URL/OPENAI_MODEL)
+
+Outputs a Markdown summary to eval/results.md.
+
+Tip: run this twice with different providers and diff the two results.md files —
+that comparative artifact is itself a portfolio talking point.
 """
 from __future__ import annotations
 

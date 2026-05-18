@@ -49,6 +49,11 @@ For regulated industries (banking, logistics, audit-heavy enterprises) this dist
 - **Claude API instead of self-hosted LLM.** A self-hosted Modal/Qwen backend exists in the same portfolio (see [RAG Knowledge Base](../)) — evaluated and rejected here because: (a) low-volume narrative generation doesn't justify GPU cost, (b) Claude's prose quality is materially better at this task, (c) zero cold-start makes for a smoother demo.
 - **CSV in, Markdown out.** No Jira/ClickUp API integration in v1. The same pandas layer works unchanged when an API is wired in — only the loader changes.
 
+### Known limitations
+- **Cycle time requires both `created` and `resolved` dates** on completed tickets. Exports missing either field show `n/a`; the UI surfaces this rather than fabricating an estimate.
+- **No persistence.** Uploaded CSVs live only in the Streamlit session and are never written to disk by this app. The metrics JSON and a small ticket sample *are* sent to Anthropic for narrative generation — do not upload data you cannot share with a third-party LLM provider.
+- **Single sprint per run.** Multi-sprint trend analysis is out of scope (see non-goals); the pandas layer is sprint-agnostic, so adding it is a parser change rather than an architecture change.
+
 ### Non-goals (deliberately not built)
 - **Multi-sprint trend analysis.** Out of scope; would require a database, not a single-CSV input.
 - **Real-time Jira webhook integration.** Out of scope for the demo; mentioned above as the obvious next step.
@@ -82,7 +87,12 @@ source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env and add your ANTHROPIC_API_KEY
+# Pick a backend in .env:
+#   LLM_PROVIDER=anthropic  → Claude (recommended for demo / interviews)
+#                              requires ANTHROPIC_API_KEY
+#   LLM_PROVIDER=openai     → any OpenAI-compatible endpoint
+#                              (DeepSeek, GPT_API_free, OpenRouter, OpenAI, vLLM…)
+#                              requires OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 
 pytest tests/ -v                  # 25+ tests, no API key required
 streamlit run app.py
@@ -112,10 +122,34 @@ Pick a sample sprint or upload your own Jira/ClickUp CSV. Click **Generate narra
 | Choice | Why |
 |---|---|
 | **pandas** | Deterministic numerical computation; the entire reason this project is trustworthy |
-| **Claude Sonnet (Anthropic)** | Best-in-class prose quality, predictable cost, no infra to manage |
+| **Claude Sonnet (Anthropic)** for demo | Best-in-class prose quality, no infra to manage |
+| **OpenAI-compatible** for dev | Free / cheap iteration via GPT_API_free or DeepSeek's own API; same code path as production via `LLM_PROVIDER` env |
 | **Streamlit** | Fastest way to a polished interactive UI; Community Cloud deploy is free |
 | **pytest** | Standard, fast, no fixtures needed for these tests |
-| **Anthropic SDK only** | One dependency for LLM access; no LangChain/LlamaIndex needed here |
+
+## Provider-switching architecture
+
+The narrator (`sprint_analyzer/narrator.py`) exposes two backend functions:
+
+| Function | Backend | SDK | Env vars |
+|---|---|---|---|
+| `_call_anthropic` | Claude Messages API | `anthropic` | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
+| `_call_openai_compatible` | Any OpenAI-compatible Chat Completions endpoint | `openai` | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` |
+
+`_default_llm_fn()` selects between them based on `LLM_PROVIDER`. The active selection is shown in the Streamlit sidebar so demo vs dev mode is unambiguous.
+
+This lets you run the same eval set against both backends and compare outputs — a comparative artifact worth more than either backend's output alone.
+
+## Cost & latency at a glance
+
+Approx token budget per generation: ~3,000 input + ~700 output.
+
+| Backend / model | Cost per generation | Notes |
+|---|---|---|
+| Claude Sonnet 4.5 | ~$0.02 | Best prose quality; recommended for interviews |
+| Claude Haiku 4.5 | ~$0.006 | 70% cheaper; acceptable for casual use |
+| DeepSeek-V3.2 (own API) | ~$0.001 | Lower polish but functionally usable |
+| DeepSeek via GPT_API_free | $0 | 30 reqs/day free tier; for development iteration |
 
 ---
 
