@@ -46,6 +46,7 @@ if any(p.exists() for p in _SECRETS_LOCATIONS):
 
 from sprint_analyzer import (
     build_report,
+    cache,
     compute_metrics,
     generate_retrospective,
     load_sprint_csv,
@@ -66,11 +67,12 @@ SAMPLE_FILES = {
 def _load_from_path(path: Path):
     with open(path, "rb") as f:
         data = f.read()
-    return load_sprint_csv(data)
+    return load_sprint_csv(data), data
 
 
 def _load_from_upload(uploaded_file):
-    return load_sprint_csv(uploaded_file.read())
+    data = uploaded_file.read()
+    return load_sprint_csv(data), data
 
 
 # ---------- Sidebar: data source ----------
@@ -88,13 +90,14 @@ source_mode = st.sidebar.radio(
 )
 
 sprint = None
+csv_bytes: bytes | None = None
 
 if source_mode == "Sample dataset":
     pick = st.sidebar.selectbox("Sample", options=list(SAMPLE_FILES.keys()))
     sample_path = DATA_DIR / SAMPLE_FILES[pick]
     if sample_path.exists():
         try:
-            sprint = _load_from_path(sample_path)
+            sprint, csv_bytes = _load_from_path(sample_path)
         except Exception as e:
             st.sidebar.error(f"Could not load sample: {e}")
     else:
@@ -107,13 +110,14 @@ else:
     )
     st.sidebar.caption(
         "🔒 Uploaded CSVs are held in memory for the current session only. "
-        "Nothing is persisted to disk by this app. The metrics JSON and a small "
-        "sample of ticket rows are sent to the Anthropic API for narrative generation — "
-        "do not upload data you cannot share with a third-party LLM provider."
+        "Generated narratives are cached to disk in `.cache/narratives/` "
+        "(gitignored) keyed by the SHA-256 of the CSV. "
+        "The metrics JSON and a small sample of ticket rows are sent to the "
+        "LLM provider — do not upload data you cannot share with them."
     )
     if uploaded is not None:
         try:
-            sprint = _load_from_upload(uploaded)
+            sprint, csv_bytes = _load_from_upload(uploaded)
         except Exception as e:
             st.sidebar.error(f"Parse failed: {e}")
 
@@ -211,10 +215,27 @@ if metrics.contributors:
 st.markdown("---")
 st.subheader("Generate retrospective")
 
+# Cache lookup keyed by the SHA-256 of the active CSV bytes.
+cache_key = cache.compute_cache_key(csv_bytes) if csv_bytes else None
+cached = cache.load(cache_key) if cache_key else None
+
+# When the user switches between samples (or uploads a new file), the
+# previously-active cache key changes. Reset session-state values so the
+# narrative shown matches the currently-selected sprint.
+if cache_key and st.session_state.get("_active_cache_key") != cache_key:
+    st.session_state["_active_cache_key"] = cache_key
+    st.session_state["narrative_md"] = cached.narrative if cached else ""
+    # Pre-fill the context box with what was used last time, if any.
+    if cached and cached.extra_context:
+        st.session_state["extra_ctx"] = cached.extra_context
+    else:
+        st.session_state.pop("extra_ctx", None)
+
 extra_ctx = st.text_area(
     "Optional: extra context (e.g. previous sprint comparison, team changes)",
-    value="",
+    value=st.session_state.get("extra_ctx", ""),
     height=80,
+    key="extra_ctx",
     placeholder="Previous sprint completed 32 points. One team member was on leave.",
 )
 
@@ -228,19 +249,54 @@ if not has_key:
         "Set the key in `.env` to enable."
     )
 
-generate_clicked = st.button("✍️ Generate narrative", type="primary", disabled=not has_key)
+btn_label = "🔄 Regenerate narrative" if cached else "✍️ Generate narrative"
+btn_cols = st.columns([4, 2, 4])
+generate_clicked = btn_cols[0].button(
+    btn_label,
+    type="primary",
+    disabled=not has_key,
+    use_container_width=True,
+)
+clear_clicked = btn_cols[1].button(
+    "🗑️ Clear",
+    disabled=not cached,
+    help="Delete this sprint's cached narrative from disk.",
+    use_container_width=True,
+)
+
+if cached:
+    st.caption(
+        f"📦 Cached narrative loaded · "
+        f"provider `{cached.provider}` · model `{cached.model}` · "
+        f"generated {cached.generated_at}"
+    )
+
+if clear_clicked and cache_key:
+    cache.delete(cache_key)
+    st.session_state["narrative_md"] = ""
+    st.rerun()
 
 if generate_clicked:
     samples = sample_tickets_for_narration(sprint.df, k=5)
     payload = NarrationInput(
         metrics=metrics,
         sample_tickets=samples,
-        extra_context=extra_ctx.strip() or None,
+        extra_context=(extra_ctx or "").strip() or None,
     )
-    with st.spinner("Asking AI to write the narrative…"):
+    with st.spinner(f"Asking the LLM ({_active_provider()}) to write the narrative…"):
         try:
             narrative = generate_retrospective(payload)
             st.session_state["narrative_md"] = narrative
+            # Persist for next reload / sample switch.
+            from sprint_analyzer.narrator import _resolved_model
+            cache.save(
+                cache_key,
+                narrative=narrative,
+                sprint_name=sprint.sprint_name,
+                provider=_active_provider(),
+                model=_resolved_model(),
+                extra_context=(extra_ctx or "").strip() or None,
+            )
         except Exception as e:
             st.error(f"Narrative generation failed: {e}")
 

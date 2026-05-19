@@ -51,7 +51,7 @@ For regulated industries (banking, logistics, audit-heavy enterprises) this dist
 
 ### Known limitations
 - **Cycle time requires both `created` and `resolved` dates** on completed tickets. Exports missing either field show `n/a`; the UI surfaces this rather than fabricating an estimate.
-- **No persistence.** Uploaded CSVs live only in the Streamlit session and are never written to disk by this app. The metrics JSON and a small ticket sample *are* sent to Anthropic for narrative generation — do not upload data you cannot share with a third-party LLM provider.
+- **Narrative cache is per-CSV.** Generated narratives are written to `.cache/narratives/<sha256>.json` (gitignored) and re-loaded on app restart or when switching back to the same sample. Uploaded CSVs themselves are never persisted — only the LLM output is. Click "🗑️ Clear cached" in the UI to invalidate a single sprint's cache.
 - **Single sprint per run.** Multi-sprint trend analysis is out of scope (see non-goals); the pandas layer is sprint-agnostic, so adding it is a parser change rather than an architecture change.
 
 ### Non-goals (deliberately not built)

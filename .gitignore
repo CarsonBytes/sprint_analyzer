@@ -9,3 +9,4 @@ env/
 .env
 eval/results.md
 .streamlit/secrets.toml
+.cache/
