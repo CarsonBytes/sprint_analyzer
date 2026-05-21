@@ -20,7 +20,9 @@ from pathlib import Path
 from typing import Optional
 
 
-CACHE_ROOT = Path(__file__).resolve().parent.parent / ".cache" / "narratives"
+_CACHE_BASE = Path(__file__).resolve().parent.parent / ".cache"
+CACHE_ROOT = _CACHE_BASE / "narratives"
+UPLOAD_ROOT = _CACHE_BASE / "uploads"
 
 
 @dataclass
@@ -105,3 +107,77 @@ def list_cached() -> list[CachedNarrative]:
         except Exception:
             continue
     return out
+
+
+# ---------- Uploaded-file persistence ----------
+
+@dataclass
+class UploadRecord:
+    sha256: str
+    filename: str
+    uploaded_at: str           # ISO-8601 UTC
+    size_bytes: int
+
+
+def _upload_data_path(key: str) -> Path:
+    return UPLOAD_ROOT / f"{key}.bin"
+
+
+def _upload_meta_path(key: str) -> Path:
+    return UPLOAD_ROOT / f"{key}.json"
+
+
+def save_upload(filename: str, csv_bytes: bytes) -> UploadRecord:
+    """Persist an uploaded file to disk under its SHA-256. Idempotent."""
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    sha = compute_cache_key(csv_bytes)
+    _upload_data_path(sha).write_bytes(csv_bytes)
+    record = UploadRecord(
+        sha256=sha,
+        filename=filename,
+        uploaded_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        size_bytes=len(csv_bytes),
+    )
+    _upload_meta_path(sha).write_text(
+        json.dumps(record.__dict__, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return record
+
+
+def load_upload(sha256: str) -> Optional[tuple[UploadRecord, bytes]]:
+    """Return (metadata, raw bytes) for a previously-saved upload, or None."""
+    meta_path = _upload_meta_path(sha256)
+    data_path = _upload_data_path(sha256)
+    if not meta_path.exists() or not data_path.exists():
+        return None
+    try:
+        meta = UploadRecord(**json.loads(meta_path.read_text(encoding="utf-8")))
+    except Exception:
+        return None
+    return meta, data_path.read_bytes()
+
+
+def list_uploads() -> list[UploadRecord]:
+    """Return all stored uploads, newest first."""
+    if not UPLOAD_ROOT.exists():
+        return []
+    out: list[UploadRecord] = []
+    for p in UPLOAD_ROOT.glob("*.json"):
+        try:
+            out.append(UploadRecord(**json.loads(p.read_text(encoding="utf-8"))))
+        except Exception:
+            continue
+    return sorted(out, key=lambda r: r.uploaded_at, reverse=True)
+
+
+def delete_upload(sha256: str) -> bool:
+    """Remove the upload's data and metadata files. Returns True if anything was deleted."""
+    meta_path = _upload_meta_path(sha256)
+    data_path = _upload_data_path(sha256)
+    removed = False
+    for p in (meta_path, data_path):
+        if p.exists():
+            p.unlink()
+            removed = True
+    return removed

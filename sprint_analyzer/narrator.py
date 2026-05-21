@@ -171,6 +171,21 @@ def active_backend_label() -> str:
     return f"Anthropic · {_resolved_model()}"
 
 
+def active_backend_params() -> list[tuple[str, str]]:
+    """Structured backend parameters for UI rendering — list of (label, value) tuples."""
+    if _active_provider() == "openai":
+        base = os.environ.get("OPENAI_BASE_URL") or OPENAI_BASE_URL_FALLBACK
+        return [
+            ("Provider", "OpenAI-compatible"),
+            ("Model",    _resolved_model()),
+            ("Endpoint", base),
+        ]
+    return [
+        ("Provider", "Anthropic"),
+        ("Model",    _resolved_model()),
+    ]
+
+
 def generate_retrospective(
     payload: NarrationInput,
     *,

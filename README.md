@@ -51,6 +51,8 @@ For regulated industries (banking, logistics, audit-heavy enterprises) this dist
 
 ### Known limitations
 - **Cycle time requires both `created` and `resolved` dates** on completed tickets. Exports missing either field show `n/a`; the UI surfaces this rather than fabricating an estimate.
+- **Status mapping is opinionated.** Real ClickUp/Jira workspaces use custom statuses (`deployed to uat`, `ready for production`, `revision needed`, etc.) — the parser collapses them into four canonical buckets (`done`, `in_progress`, `to_do`, `blocked`) using a deliberate mapping. The full table is in `STATUS_ALIASES` at the top of `parser.py`. Notable choices: `ready for production` and `deployed to production` map to `done` (dev work complete); `deployed to uat` and `deployed to staging` map to `in_progress` (still being verified); `details needed` maps to `blocked`. Override the dict at import time if your team uses different semantics.
+- **`Points Estimate Rolled Up` columns are excluded** from heuristic matching to prevent collisions with `Points Estimate`. If your workspace only puts points on subtasks and parents carry only the rolled-up total, you'll see zero committed points — switch your team's convention or extend the matcher.
 - **Narrative cache is per-CSV.** Generated narratives are written to `.cache/narratives/<sha256>.json` (gitignored) and re-loaded on app restart or when switching back to the same sample. Uploaded CSVs themselves are never persisted — only the LLM output is. Click "🗑️ Clear cached" in the UI to invalidate a single sprint's cache.
 - **Single sprint per run.** Multi-sprint trend analysis is out of scope (see non-goals); the pandas layer is sprint-agnostic, so adding it is a parser change rather than an architecture change.
 

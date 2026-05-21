@@ -52,83 +52,162 @@ from sprint_analyzer import (
     load_sprint_csv,
 )
 from sprint_analyzer.metrics import sample_tickets_for_narration
-from sprint_analyzer.narrator import NarrationInput, active_backend_label, _active_provider
+from sprint_analyzer.narrator import (
+    NarrationInput,
+    active_backend_label,
+    active_backend_params,
+    _active_provider,
+)
 from sprint_analyzer.report import render_metrics_section
 
 DATA_DIR = Path(__file__).parent / "data"
 SAMPLE_FILES = {
-    "Voyager Logistics — Sprint 23 (15 tickets, 1 blocked)": "sample_sprint_jira.csv",
-    "Coastal Bank — Sprint 7 (slow, low completion)": "sample_sprint_clickup.csv",
+    "Voyager Logistics — Jira Sprint 23 (serialized sprint object, code review state)":
+        "sample_sprint_jira.csv",
+    "Coastal Bank — ClickUp Sprint 7 (Kanban statuses, bracketed assignees, multi-assignee)":
+        "sample_sprint_clickup.csv",
 }
 
 
 # ---------- Helpers ----------
 
-def _load_from_path(path: Path):
-    with open(path, "rb") as f:
-        data = f.read()
-    return load_sprint_csv(data), data
+def _load_active_source():
+    """
+    Returns (sprint, csv_bytes, label) for the active source, or (None, None, None).
+    Source is tracked in session_state with keys:
+      - source_kind: "sample" | "upload"
+      - sample_pick: <label from SAMPLE_FILES>
+      - upload_sha:  <sha256 of an entry in cache.list_uploads()>
+    """
+    kind = st.session_state.get("source_kind", "sample")
+    if kind == "sample":
+        label = st.session_state.get("sample_pick") or next(iter(SAMPLE_FILES))
+        path = DATA_DIR / SAMPLE_FILES.get(label, "")
+        if not path.exists():
+            return None, None, None
+        data = path.read_bytes()
+        return load_sprint_csv(data), data, label
+    if kind == "upload":
+        sha = st.session_state.get("upload_sha")
+        if not sha:
+            return None, None, None
+        record = cache.load_upload(sha)
+        if record is None:
+            # Cache was deleted out-of-band; fall back to no source.
+            st.session_state["source_kind"] = "sample"
+            st.session_state.pop("upload_sha", None)
+            return None, None, None
+        meta, data = record
+        return load_sprint_csv(data), data, meta.filename
+    return None, None, None
 
 
-def _load_from_upload(uploaded_file):
-    data = uploaded_file.read()
-    return load_sprint_csv(data), data
+def _activate_sample(label: str):
+    st.session_state["source_kind"] = "sample"
+    st.session_state["sample_pick"] = label
+    st.session_state.pop("upload_sha", None)
 
 
-# ---------- Sidebar: data source ----------
+def _activate_upload(sha: str):
+    st.session_state["source_kind"] = "upload"
+    st.session_state["upload_sha"] = sha
+
+
+# Initialise defaults so the body always has something to load.
+if "sample_pick" not in st.session_state:
+    st.session_state["sample_pick"] = next(iter(SAMPLE_FILES))
+if "source_kind" not in st.session_state:
+    st.session_state["source_kind"] = "sample"
+
+
+# ---------- Sidebar: functional only — no marketing copy ----------
+
+# Hide the file-uploader's filename/size chip that appears after a successful
+# upload. The upload is auto-saved to cache and shown in "My files"; the chip
+# duplicates that information and clutters the sidebar.
+st.markdown(
+    """
+    <style>
+    [data-testid="stFileUploaderFileData"],
+    [data-testid="stFileUploaderFile"],
+    [data-testid="stFileUploaderDeleteBtn"] { display: none; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.sidebar.title("📊 Sprint Analyzer")
-st.sidebar.markdown(
-    "**pandas** → numbers · **Claude** → narrative\n\n"
-    "Upload a Jira/ClickUp export or pick a sample."
-)
 
-source_mode = st.sidebar.radio(
-    "Data source",
-    options=["Sample dataset", "Upload your own CSV"],
-    index=0,
-)
+# — Samples —
+st.sidebar.markdown("##### Samples")
+for _sample_label in SAMPLE_FILES.keys():
+    _is_active_sample = (
+        st.session_state.get("source_kind") == "sample"
+        and st.session_state.get("sample_pick") == _sample_label
+    )
+    if st.sidebar.button(
+        ("▶ " if _is_active_sample else "📊 ") + _sample_label,
+        key=f"_sample_{_sample_label}",
+        use_container_width=True,
+    ):
+        _activate_sample(_sample_label)
+        st.rerun()
 
-sprint = None
-csv_bytes: bytes | None = None
+# — My files —
+st.sidebar.markdown("##### My files")
+_cached_uploads = cache.list_uploads()
 
-if source_mode == "Sample dataset":
-    pick = st.sidebar.selectbox("Sample", options=list(SAMPLE_FILES.keys()))
-    sample_path = DATA_DIR / SAMPLE_FILES[pick]
-    if sample_path.exists():
-        try:
-            sprint, csv_bytes = _load_from_path(sample_path)
-        except Exception as e:
-            st.sidebar.error(f"Could not load sample: {e}")
-    else:
-        st.sidebar.warning(f"Sample file missing: {sample_path.name}")
+if not _cached_uploads:
+    st.sidebar.caption("No uploaded files.")
 else:
-    uploaded = st.sidebar.file_uploader(
-        "Jira or ClickUp CSV export",
-        type=["csv"],
-        help="Auto-detects Jira and ClickUp formats. Falls back to heuristic column mapping.",
-    )
-    st.sidebar.caption(
-        "🔒 Uploaded CSVs are held in memory for the current session only. "
-        "Generated narratives are cached to disk in `.cache/narratives/` "
-        "(gitignored) keyed by the SHA-256 of the CSV. "
-        "The metrics JSON and a small sample of ticket rows are sent to the "
-        "LLM provider — do not upload data you cannot share with them."
-    )
-    if uploaded is not None:
-        try:
-            sprint, csv_bytes = _load_from_upload(uploaded)
-        except Exception as e:
-            st.sidebar.error(f"Parse failed: {e}")
+    for _upload in _cached_uploads:
+        row = st.sidebar.columns([5, 1])
+        _is_active = (
+            st.session_state.get("source_kind") == "upload"
+            and st.session_state.get("upload_sha") == _upload.sha256
+        )
+        if row[0].button(
+            ("▶ " if _is_active else "📄 ") + _upload.filename,
+            key=f"_load_{_upload.sha256}",
+            use_container_width=True,
+        ):
+            _activate_upload(_upload.sha256)
+            st.rerun()
+        if row[1].button("✕", key=f"_del_{_upload.sha256}", help="Remove from cache"):
+            cache.delete_upload(_upload.sha256)
+            cache.delete(_upload.sha256)               # also wipe its narrative
+            if (st.session_state.get("source_kind") == "upload"
+                    and st.session_state.get("upload_sha") == _upload.sha256):
+                st.session_state["source_kind"] = "sample"
+                st.session_state.pop("upload_sha", None)
+            st.rerun()
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**LLM backend**")
-st.sidebar.code(active_backend_label(), language="text")
-st.sidebar.caption(
-    "Switch backends in `.env`: `LLM_PROVIDER=anthropic` for Claude (demo), "
-    "`LLM_PROVIDER=openai` for any OpenAI-compatible endpoint (dev / free tiers)."
+# — New upload —
+_uploaded = st.sidebar.file_uploader(
+    "Upload",
+    type=["csv"],
+    label_visibility="collapsed",
+    key="_file_uploader",
 )
-st.sidebar.caption("[Architecture decisions →](README.md)")
+if _uploaded is not None:
+    _fid = getattr(_uploaded, "file_id", None) or _uploaded.name
+    if st.session_state.get("_last_upload_fid") != _fid:
+        st.session_state["_last_upload_fid"] = _fid
+        _bytes = _uploaded.read()
+        _sha = cache.compute_cache_key(_bytes)
+        if cache.load_upload(_sha) is None:
+            cache.save_upload(_uploaded.name, _bytes)
+        _activate_upload(_sha)
+        st.rerun()
+
+# — Backend (functional info only) —
+st.sidebar.markdown("---")
+st.sidebar.markdown("##### Backend")
+for _label, _value in active_backend_params():
+    st.sidebar.markdown(f"**{_label}**  \n{_value}")
+
+# Resolve the active source for the body.
+sprint, csv_bytes, source_label = _load_active_source()
 
 
 # ---------- Main: metrics view ----------
@@ -144,8 +223,9 @@ if sprint is None:
 
 metrics = compute_metrics(sprint)
 
-# Sprint-aware title — show the detected sprint name prominently if we have it.
-sprint_label = sprint.sprint_name or "(unnamed sprint)"
+# Sprint-aware title. Prefer the embedded sprint name (Jira object-string or
+# ClickUp Sprints field); fall back to the source filename / sample label.
+sprint_label = sprint.sprint_name or source_label or "Sprint"
 st.title(f"📊 {sprint_label}")
 st.caption(
     f"**{sprint.total_tickets}** tickets · **{sprint.source_format}** format · "

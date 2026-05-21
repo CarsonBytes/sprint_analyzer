@@ -178,9 +178,15 @@ def sample_tickets_for_narration(df: pd.DataFrame, k: int = 5) -> dict[str, list
         )
 
     blocked = df[df["status"] == "blocked"].copy()
+    # High-priority synonyms across Jira, ClickUp, Linear, custom workflows.
+    # ClickUp specifically uses "URGENT" / "HIGH"; Linear uses 1–4 numeric.
+    high_priority_terms = {
+        "high", "highest", "urgent", "critical", "blocker",
+        "p0", "p1", "1", "2",
+    }
     high_priority_open = df[
         (df["status"] != "done")
-        & (df["priority"].astype(str).str.lower().isin(["high", "highest", "critical", "p0", "p1"]))
+        & (df["priority"].astype(str).str.lower().str.strip().isin(high_priority_terms))
     ].copy()
     biggest_done = df[df["status"] == "done"].sort_values("story_points", ascending=False).copy()
     unestimated = df[df["story_points"].isna()].copy()

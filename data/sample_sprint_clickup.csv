@@ -1,13 +1,13 @@
-Task ID,Task Name,Status,Priority,Assignees,Sprint Points,Date Created,Date Done,Sprint
-CB-401,Implement KYC document re-verification flow,To Do,High,Unassigned,8,2026-04-01,,Sprint 7
-CB-402,Patch HKMA reporting field mismatch (SR-2026-04),Done,Highest,Jasmine Lau,5,2026-04-01,2026-04-04,Sprint 7
-CB-403,Add session timeout warning (regulatory),In Progress,High,Kevin Tang,5,2026-04-01,,Sprint 7
-CB-404,Refactor wire transfer fee calculation,In Progress,Medium,Jasmine Lau,8,2026-04-01,,Sprint 7
-CB-405,Investigate failed batch settlement on 2026-03-29,Done,Highest,Kevin Tang,3,2026-04-01,2026-04-03,Sprint 7
-CB-406,Migrate audit log warehouse to new region,In Progress,Medium,Unassigned,13,2026-04-01,,Sprint 7
-CB-407,Customer statement PDF rendering bug,In Progress,Medium,Mei Lin,3,2026-04-01,,Sprint 7
-CB-408,Two-factor auth for internal admin console,Blocked,High,Kevin Tang,5,2026-04-01,,Sprint 7
-CB-409,Update card-tokenisation library to PCI DSS 4.0,To Do,High,Mei Lin,8,2026-04-01,,Sprint 7
-CB-410,Document incident response playbook v3,In Progress,Low,Jasmine Lau,2,2026-04-01,,Sprint 7
-CB-411,Add Cantonese support to mobile banking app,To Do,Medium,Unassigned,,2026-04-01,,Sprint 7
-CB-412,Fix mobile push notification duplication,To Do,Medium,Unassigned,,2026-04-01,,Sprint 7
+"Task ID","Task Name","Status","Priority","Assignee","Points Estimate","Points Estimate Rolled Up","Date Created","Date Done","Sprints","Tags"
+"CB-401","KYC document re-verification flow (HKMA 2026 update)","Deployed to Production","URGENT","[Jasmine Lau]","8","8","Wednesday, April 1st 2026, 9:00:00 am +08:00","Friday, April 10th 2026, 4:30:00 pm +08:00","Sprint 7","[regulatory]"
+"CB-402","Patch HKMA reporting field mismatch (SR-2026-04)","Ready for Production","URGENT","[Jasmine Lau]","5","5","Wednesday, April 1st 2026, 9:00:00 am +08:00","Monday, April 6th 2026, 11:15:00 am +08:00","Sprint 7","[hotfix]"
+"CB-403","Add session timeout warning (regulatory)","Deployed to UAT","HIGH","[Kevin Tang]","5","5","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[security]"
+"CB-404","Refactor wire transfer fee calculation","In Progress","NORMAL","[Jasmine Lau, Kevin Tang]","8","8","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[backend]"
+"CB-405","Investigate failed batch settlement on 2026-03-29","Deployed to Production","URGENT","[Kevin Tang]","3","3","Wednesday, April 1st 2026, 9:00:00 am +08:00","Thursday, April 3rd 2026, 6:45:00 pm +08:00","Sprint 7","[incident]"
+"CB-406","Migrate audit log warehouse to new region","In Review","NORMAL","[Mei Lin, Kevin Tang]","13","13","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[infra]"
+"CB-407","Customer statement PDF rendering bug","In Progress","NORMAL","[Mei Lin]","3","3","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[bug]"
+"CB-408","Two-factor auth for internal admin console","Blocked","HIGH","[Kevin Tang]","5","5","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[security, blocked]"
+"CB-409","Update card-tokenisation library to PCI DSS 4.0","Details Needed","HIGH","[]","8","8","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[security, compliance]"
+"CB-410","Document incident response playbook v3","Ready for Dev","LOW","[]","2","2","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[docs]"
+"CB-411","Add Cantonese support to mobile banking app","Backlog","NORMAL","[]","","0","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[i18n, mobile]"
+"CB-412","Fix mobile push notification duplication","Ready for Dev","NORMAL","[]","","0","Wednesday, April 1st 2026, 9:00:00 am +08:00","","Sprint 7","[bug, mobile]"
