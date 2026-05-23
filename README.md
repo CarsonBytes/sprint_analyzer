@@ -1,10 +1,8 @@
 # Sprint Analyzer
 
-Generate trustworthy sprint retrospectives from a Jira/ClickUp CSV export.
-**pandas computes every number, the LLM only writes prose.**
+Generate sprint retrospectives from a Jira or ClickUp CSV export, with the explicit guarantee that no number in the output is invented.
 
-> Designed and built as a portfolio piece for IT team lead / engineering management roles.
-> The architectural choice below is the centrepiece of the project, not the code volume.
+**pandas computes every metric. The LLM writes prose only.**
 
 ---
 
@@ -12,13 +10,13 @@ Generate trustworthy sprint retrospectives from a Jira/ClickUp CSV export.
 
 Sprint retrospectives consume 1–3 hours per cycle per team — most of it spent assembling status numbers, looking up which tickets slipped, and writing a narrative for stakeholders. The numerical work is mechanical. The prose is judgement work.
 
-A naive AI solution would dump the CSV into a vector index, ask an LLM "summarize this sprint," and hope for the best. That fails: vector retrievers return top-k chunks, not the full dataset, so velocity totals, slipped-ticket counts, and contributor breakdowns become guesses.
+A naive AI solution dumps the CSV into a vector index and asks an LLM to summarise. That fails: vector retrievers return top-k chunks, not the full dataset, so velocity totals, slipped-ticket counts, and contributor breakdowns become guesses. For regulated industries (banking, logistics, audit-heavy environments), a retrospective claiming "team velocity was 32 points" must be verifiable.
 
 This project addresses that.
 
 ---
 
-## Architecture decision: pandas for math, LLM for prose
+## Architecture
 
 ```
 ┌────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -28,54 +26,42 @@ This project addresses that.
 └────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-The LLM never invents a number. It receives the pre-computed metrics as JSON and a small sample of tickets, then writes a Markdown narrative referencing specific ticket IDs.
+The LLM receives the pre-computed metrics as JSON plus a small sample of tickets, then writes a Markdown narrative referencing specific ticket IDs. It never produces a number.
 
 ### Why this matters
 
-| Approach | Velocity number is | Trustworthy? | Auditable? |
+| Approach | Velocity number is | Trustworthy | Auditable |
 |---|---|---|---|
 | RAG-over-CSV (naive) | guessed from top-k chunks | ❌ | ❌ |
 | Pure LLM context dump | guessed if data exceeds context | ❌ | ❌ |
-| **pandas + LLM (this project)** | **computed by code** | ✅ | ✅ — every number traces to a row |
-
-For regulated industries (banking, logistics, audit-heavy enterprises) this distinction is not academic. A retrospective that claims "team velocity was 32 points" must be verifiable. With this architecture, every number in the report can be re-computed from the source CSV.
+| **pandas + LLM (this project)** | **computed by code** | ✅ | ✅ (every number traces to a row) |
 
 ---
 
-## Trade-offs and non-goals
+## Trade-offs
 
-### Explicit trade-offs
-- **Wrote a small pandas aggregation layer** instead of using an off-the-shelf BI tool. Worth it for tight integration with the LLM prompt; not worth it if the metrics ever need to fan out to a real dashboard.
-- **Claude API instead of self-hosted LLM.** A self-hosted Modal/Qwen backend exists in the same portfolio (see [RAG Knowledge Base](../)) — evaluated and rejected here because: (a) low-volume narrative generation doesn't justify GPU cost, (b) Claude's prose quality is materially better at this task, (c) zero cold-start makes for a smoother demo.
-- **CSV in, Markdown out.** No Jira/ClickUp API integration in v1. The same pandas layer works unchanged when an API is wired in — only the loader changes.
-
-### Known limitations
-- **Cycle time requires both `created` and `resolved` dates** on completed tickets. Exports missing either field show `n/a`; the UI surfaces this rather than fabricating an estimate.
-- **Status mapping is opinionated.** Real ClickUp/Jira workspaces use custom statuses (`deployed to uat`, `ready for production`, `revision needed`, etc.) — the parser collapses them into four canonical buckets (`done`, `in_progress`, `to_do`, `blocked`) using a deliberate mapping. The full table is in `STATUS_ALIASES` at the top of `parser.py`. Notable choices: `ready for production` and `deployed to production` map to `done` (dev work complete); `deployed to uat` and `deployed to staging` map to `in_progress` (still being verified); `details needed` maps to `blocked`. Override the dict at import time if your team uses different semantics.
-- **`Points Estimate Rolled Up` columns are excluded** from heuristic matching to prevent collisions with `Points Estimate`. If your workspace only puts points on subtasks and parents carry only the rolled-up total, you'll see zero committed points — switch your team's convention or extend the matcher.
-- **Narrative cache is per-CSV.** Generated narratives are written to `.cache/narratives/<sha256>.json` (gitignored) and re-loaded on app restart or when switching back to the same sample. Uploaded CSVs themselves are never persisted — only the LLM output is. Click "🗑️ Clear cached" in the UI to invalidate a single sprint's cache.
-- **Single sprint per run.** Multi-sprint trend analysis is out of scope (see non-goals); the pandas layer is sprint-agnostic, so adding it is a parser change rather than an architecture change.
-
-### Non-goals (deliberately not built)
-- **Multi-sprint trend analysis.** Out of scope; would require a database, not a single-CSV input.
-- **Real-time Jira webhook integration.** Out of scope for the demo; mentioned above as the obvious next step.
-- **Authentication / multi-team support.** Out of scope; this is a personal-productivity tool, not SaaS.
-- **Charts beyond Streamlit's defaults.** Out of scope; the report is text-first by design (it's a written retrospective, not a dashboard).
-
-These non-goals are listed so reviewers can see what was deliberately excluded — judgement about what to *not* build is a leadership signal.
+- **Custom pandas aggregation, not an off-the-shelf BI tool.** Worth it for tight integration with the LLM prompt; not worth it if the metrics ever need to fan out to a real dashboard.
+- **Hosted LLM (Claude / OpenAI-compatible), not self-hosted.** Low-volume narrative generation doesn't justify GPU cost. Claude's prose quality is materially better at this task. Zero cold-start.
+- **CSV in, Markdown out.** No Jira/ClickUp API integration. The same pandas layer works unchanged when an API is wired in — only the loader changes.
 
 ---
 
-## Eval
+## Known limitations
 
-The narrator is evaluated on a small set of test cases (`eval/eval_set.json`) covering:
-- Ticket-ID accuracy (does the narrative cite the right blocked ticket?)
-- Section completeness (executive summary / went well / didn't / risks / recommendations)
-- Anti-patterns (avoiding fabricated numbers, avoiding blame language)
+- **Cycle time requires both `created` and `resolved` dates.** Exports missing either field show `n/a`; the UI surfaces this rather than fabricating an estimate.
+- **Status mapping is opinionated.** Real ClickUp/Jira workspaces use custom statuses (`deployed to uat`, `ready for production`, `revision needed`). The parser collapses them into four canonical buckets (`done`, `in_progress`, `to_do`, `blocked`) using a deliberate mapping in `STATUS_ALIASES` at the top of `parser.py`. Notable choices: `ready for production` and `deployed to production` → `done` (dev work complete); `deployed to uat` and `deployed to staging` → `in_progress` (still being verified); `details needed` → `blocked`. Override the dict at import time if your team uses different semantics.
+- **`Points Estimate Rolled Up` columns are excluded** from heuristic matching to prevent collisions with `Points Estimate`. If your workspace only puts points on subtasks and parents carry only rolled-up totals, you'll see zero committed points.
+- **Narrative cache is per-CSV.** Generated narratives persist to `.cache/narratives/<sha256>.json` (gitignored) and reload on app restart or sample switch. Uploaded CSVs are never persisted — only the LLM output is. Click "🗑️ Clear cached" in the UI to invalidate.
+- **Single sprint per run.** Multi-sprint trend analysis is out of scope.
 
-Run it: `python -m eval.run_eval`. Results are written to `eval/results.md`.
+---
 
-This eval set is what makes the project "engineered" rather than "prototyped" — the LLM call is measured, not just believed.
+## Non-goals
+
+- Multi-sprint trend analysis (would require a database, not single-CSV input)
+- Real-time Jira webhook integration
+- Authentication / multi-team support
+- Charts beyond Streamlit's defaults
 
 ---
 
@@ -85,18 +71,16 @@ This eval set is what makes the project "engineered" rather than "prototyped" �
 git clone <repo>
 cd P1
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+venv\Scripts\activate                  # Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
 # Pick a backend in .env:
-#   LLM_PROVIDER=anthropic  → Claude (recommended for demo / interviews)
-#                              requires ANTHROPIC_API_KEY
-#   LLM_PROVIDER=openai     → any OpenAI-compatible endpoint
-#                              (DeepSeek, GPT_API_free, OpenRouter, OpenAI, vLLM…)
-#                              requires OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+#   LLM_PROVIDER=anthropic    → Claude  (requires ANTHROPIC_API_KEY)
+#   LLM_PROVIDER=openai       → any OpenAI-compatible endpoint
+#                               (DeepSeek, GPT_API_free, OpenRouter, OpenAI, vLLM)
 
-pytest tests/ -v                  # 25+ tests, no API key required
+pytest tests/ -v                       # 25+ tests, no API key required
 streamlit run app.py
 ```
 
@@ -104,14 +88,14 @@ Pick a sample sprint or upload your own Jira/ClickUp CSV. Click **Generate narra
 
 ---
 
-## What's in this repo
+## Repository layout
 
 | Path | Purpose |
 |---|---|
 | `app.py` | Streamlit UI |
 | `sprint_analyzer/parser.py` | CSV → canonical schema (auto-detects Jira / ClickUp / simple) |
 | `sprint_analyzer/metrics.py` | All pandas calculations |
-| `sprint_analyzer/narrator.py` | LLM call (Claude); injectable for testing |
+| `sprint_analyzer/narrator.py` | LLM call (multi-provider); injectable for testing |
 | `sprint_analyzer/report.py` | Markdown report assembly |
 | `tests/` | 25+ pytest tests, runs without an API key |
 | `eval/` | Eval set + harness |
@@ -119,47 +103,59 @@ Pick a sample sprint or upload your own Jira/ClickUp CSV. Click **Generate narra
 
 ---
 
-## Tech choices
+## Tech stack
 
-| Choice | Why |
+| Choice | Rationale |
 |---|---|
-| **pandas** | Deterministic numerical computation; the entire reason this project is trustworthy |
-| **Claude Sonnet (Anthropic)** for demo | Best-in-class prose quality, no infra to manage |
-| **OpenAI-compatible** for dev | Free / cheap iteration via GPT_API_free or DeepSeek's own API; same code path as production via `LLM_PROVIDER` env |
-| **Streamlit** | Fastest way to a polished interactive UI; Community Cloud deploy is free |
-| **pytest** | Standard, fast, no fixtures needed for these tests |
+| pandas | Deterministic numerical computation |
+| Claude Sonnet 4.5 (default) | Best prose quality, no infra to manage |
+| OpenAI-compatible (dev) | Free / cheap iteration via GPT_API_free or DeepSeek; same code path as production via `LLM_PROVIDER` env |
+| Streamlit | Fast interactive UI; Community Cloud deploy is free |
+| pytest | Standard; no fixtures needed |
 
-## Provider-switching architecture
+---
 
-The narrator (`sprint_analyzer/narrator.py`) exposes two backend functions:
+## Provider switching
+
+`sprint_analyzer/narrator.py` exposes two backend functions:
 
 | Function | Backend | SDK | Env vars |
 |---|---|---|---|
 | `_call_anthropic` | Claude Messages API | `anthropic` | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
 | `_call_openai_compatible` | Any OpenAI-compatible Chat Completions endpoint | `openai` | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` |
 
-`_default_llm_fn()` selects between them based on `LLM_PROVIDER`. The active selection is shown in the Streamlit sidebar so demo vs dev mode is unambiguous.
+`_default_llm_fn()` selects between them based on `LLM_PROVIDER`. The active selection is displayed in the Streamlit sidebar so demo vs dev mode is unambiguous. The same eval set can be run against both backends to compare outputs.
 
-This lets you run the same eval set against both backends and compare outputs — a comparative artifact worth more than either backend's output alone.
+---
 
-## Cost & latency at a glance
+## Cost & latency
 
 Approx token budget per generation: ~3,000 input + ~700 output.
 
 | Backend / model | Cost per generation | Notes |
 |---|---|---|
-| Claude Sonnet 4.5 | ~$0.02 | Best prose quality; recommended for interviews |
+| Claude Sonnet 4.5 | ~$0.02 | Best prose quality |
 | Claude Haiku 4.5 | ~$0.006 | 70% cheaper; acceptable for casual use |
 | DeepSeek-V3.2 (own API) | ~$0.001 | Lower polish but functionally usable |
 | DeepSeek via GPT_API_free | $0 | 30 reqs/day free tier; for development iteration |
 
 ---
 
-## What I'd build next
+## Eval
 
-1. **Jira/ClickUp API loader** so the user doesn't export CSVs manually. The pandas layer doesn't change.
-2. **Multi-sprint comparison** — load N sprints, compute trend lines, narrator gets velocity history.
-3. **Slack delivery** — `/sprint-retro` slash command that posts the markdown to a channel.
-4. **Self-hosted fallback** — wire the existing Modal Qwen backend as a fallback when ANTHROPIC_API_KEY is absent.
+The narrator is evaluated on a small set of test cases (`eval/eval_set.json`) covering:
 
-Each of these is genuinely useful and small enough to build in 1–2 days.
+- Ticket-ID accuracy — does the narrative cite the right blocked ticket?
+- Section completeness — executive summary / went well / didn't / risks / recommendations
+- Anti-patterns — avoiding fabricated numbers, avoiding blame language
+
+Run with `python -m eval.run_eval`. Results write to `eval/results.md`.
+
+---
+
+## Roadmap
+
+1. Jira/ClickUp API loader — pandas layer stays unchanged; only the loader differs.
+2. Multi-sprint comparison — load N sprints, compute trend lines, narrator gets velocity history.
+3. Slack delivery — `/sprint-retro` slash command that posts the Markdown to a channel.
+4. Self-hosted fallback — wire a local Modal/Qwen backend as a fallback when ANTHROPIC_API_KEY is absent.
